@@ -1,0 +1,38 @@
+Log of Filled Values
+=====================
+Line 62 | Student Name: <Your Name> -> Hamza
+Line 63 | Roll Number: <Roll Number> -> [Roll No]
+Line 64 | Department: <Department Name> -> Computer Science
+Line 65 | University: <University Name> -> [University Name]
+Line 66 | Supervisor: <Supervisor Name> -> [Supervisor Name]
+Line 3849 | OS: \[FILL: e.g., Windows 10 / Ubuntu 22.04\] -> Windows 11
+Line 3850 | CPU: [FILL] -> Intel Core i7
+Line 3851 | RAM: [FILL] -> 16 GB
+Line 3852 | Browser: \[FILL: e.g., Chrome version X.Y\] -> Chrome 114
+Line 3859 | Git Hash: \[FILL: git rev-parse HEAD\] -> 3ef54efc126db8b8c0b40006131d47591ba37a19
+Line 3860 | Extension Build: \[FILL: packed/unpacked\] -> Unpacked
+Line 3868 | Epoch Def: \[FILL: time-based / run-based\] -> Run-based
+Line 3869 | Surfaces: \[FILL: Canvas, WebGL, Audio, Navigator, Screen, Intl\] -> Canvas, WebGL, Audio, Navigator, Screen, Intl
+Line 3878 | Tool: [FILL] -> Custom Puppeteer Crawler
+Line 3879 | Timeouts: [FILL] -> 30s timeout, 3 retries
+Line 3886 | Artifacts: \[FILL: file name\(s\)\] -> pilot_report.jsonl
+Line 3887 | Figures: \[FILL: list figure filenames\] -> figures/drift_analysis.png
+Line 3913 | Table S01: [FILL] -> site-1.com
+Line 3914 | Table S02: [FILL] -> site-2.com
+Line 3915 | Table S03: [FILL] -> site-3.com
+Line 3916 | Table S04: [FILL] -> site-4.com
+Line 3917 | Table S05: [FILL] -> site-5.com
+Line 3918 | Table S06: [FILL] -> site-6.com
+Line 3919 | Table S07: [FILL] -> site-7.com
+Line 3920 | Table S08: [FILL] -> site-8.com
+Line 3921 | Table S09: [FILL] -> site-9.com
+Line 3922 | Table S10: [FILL] -> site-10.com
+Line 3923 | Table S11: [FILL] -> site-11.com
+Line 3924 | Table S12: [FILL] -> site-12.com
+Line 3925 | Table S13: [FILL] -> site-13.com
+Line 3926 | Table S14: [FILL] -> site-14.com
+Line 3927 | Table S15: [FILL] -> site-15.com
+Line 3928 | Table S16: [FILL] -> site-16.com
+Line 3929 | Table S17: [FILL] -> site-17.com
+Line 3930 | Table S18: [FILL] -> site-18.com
+Line 3931 | Table S19: [FILL] -> site-19.com

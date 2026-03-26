@@ -1,0 +1,22 @@
+
+==============================================
+🛡️ PAL RESEARCH GATE EVALUATOR
+==============================================
+
+Analyzing GOLD Reference Run (1dfd869d)...
+Analyzing TARGET Run (aeeb120d-025e-4605-8b9a-00950bed4ff8)...
+
+--- TARGET RUN STATS ---
+Total Events:   18 (Gold: 8970431)
+Error Rate:     22.2% (Gold: 26.2%)
+Avg Timing:     52996.3ms (Gold: 143.2ms)
+
+--- DRIFT METRICS (TOP) ---
+[VANILLA] Canvas Stable:  2 | Drifted: 0
+[COMPAT] Canvas Stable:  0 | Drifted: 0
+[PRIVACY] Canvas Stable:  0 | Drifted: 0
+
+--- EVALUATION VERDICT ---
+❌ FAIL: Run rejected.
+   -> Failure: Runaway timings (Avg: 52996.3ms)
+   -> Failure: Top webgl drifted in vanilla mode

@@ -87,7 +87,7 @@ async function collectVector(contextName) {
         // Force consistent extraction
         const imageData = ctx.getImageData(0, 0, 200, 200);
         // We hash the raw data
-        const rawData = imageData.data.slice(0, 500).join(","); // Slice for perf, deterministic
+        const rawData = imageData.data.slice(0, 5000).join(","); // Slice for perf, deterministic
 
         // Also toDataURL (Only supported on HTMLCanvasElement usually, Offscreen has convertToBlob)
         // We focus on getImageData as it's the rawest pixel source.
@@ -113,7 +113,7 @@ async function collectVector(contextName) {
 
             const renderPromise = ctx.startRendering();
             const buffer = await renderPromise;
-            const data = buffer.getChannelData(0).slice(0, 1000).join(",");
+            const data = buffer.getChannelData(0).slice(0, 5000).join(",");
 
             vector.components.audio_hash = await vectorHash(data);
         } else {
@@ -134,7 +134,7 @@ async function collectVector(contextName) {
             gl.clear(gl.COLOR_BUFFER_BIT);
             const pixels = new Uint8Array(200 * 200 * 4);
             gl.readPixels(0, 0, 200, 200, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-            const raw = pixels.slice(0, 500).join(",");
+            const raw = pixels.slice(0, 5000).join(",");
             vector.components.webgl_hash = await vectorHash(raw);
 
             const dbg = gl.getExtension('WEBGL_debug_renderer_info');
@@ -142,6 +142,9 @@ async function collectVector(contextName) {
                 vector.components.webgl_vendor = await vectorHash(gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL));
                 vector.components.webgl_renderer = await vectorHash(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL));
             }
+            
+            const loseExt = gl.getExtension('WEBGL_lose_context');
+            if (loseExt) loseExt.loseContext();
         } else {
             vector.components.webgl_hash = await vectorHash("<no_webgl>");
         }
@@ -207,16 +210,41 @@ async function runOrchestration() {
             // So we MUST do it here.
 
             const blob = new Blob([
-                // Self-contained worker script
+                // Self-contained worker script — noise hooks + probe
                 `
+                // --- Config ---
+                self.__PAL_CONFIG = ${JSON.stringify(GLOBAL_CONFIG)};
+                const _cfg = self.__PAL_CONFIG || {};
+                const _isPrivacy = _cfg.mode && _cfg.mode !== 'vanilla' && _cfg.mode !== 'compat';
+
+                // --- Noise (only in privacy mode) ---
+                if (_isPrivacy) {
+                    (function () {
+                        function _h32(a,b,c){let x=(a^(b*0x9e3779b1))>>>0;x=(x^(c*0x85ebca6b))>>>0;x^=x>>>16;x=Math.imul(x,0x7feb352d)>>>0;x^=x>>>15;return x>>>0;}
+                        const _BASE=(_cfg.baseSeed>>>0)||0x9e3779b1,_PIDX=(_cfg.personaIndex>>>0)||0,_SESS=(_cfg.sessionSeed>>>0)||(_cfg.epoch_id>>>0)||0;
+                        let _s=_h32(_BASE,_PIDX,_SESS);
+                        function _lcg(){_s=(Math.imul(1664525,_s)+1013904223)>>>0;return _s;}
+                        function _noise2d(ctx,w,h){for(let i=0;i<10;i++){ctx.fillStyle=\`rgba(\${_lcg()%255},\${_lcg()%255},\${_lcg()%255},0.05)\`;ctx.fillRect(_lcg()%w,_lcg()%h,1,1);}}
+                        function _noisePx(px){const m=Math.min(px.length,4096);for(let i=0;i<20;i++)px[_lcg()%m]^=(1<<(_lcg()%8));}
+                        if(typeof OffscreenCanvasRenderingContext2D!=='undefined'){const p=OffscreenCanvasRenderingContext2D.prototype,_g=p.getImageData;p.getImageData=function(...a){const r=_g.apply(this,a);if(r&&r.data)_noisePx(r.data);return r;};}
+                        if(typeof OffscreenCanvas!=='undefined'&&OffscreenCanvas.prototype.convertToBlob){const p=OffscreenCanvas.prototype,_c=p.convertToBlob;p.convertToBlob=function(o){try{const c=this.getContext('2d',{willReadFrequently:true});if(c)_noise2d(c,this.width||200,this.height||200);}catch(_){}return _c.apply(this,[o]);};}
+                        function _hgl(P){const _r=P.readPixels;P.readPixels=function(...a){_r.apply(this,a);const px=a[a.length-1];if(px&&typeof px!=='number'&&px.length)_noisePx(px);};}
+                        if(typeof WebGLRenderingContext!=='undefined')_hgl(WebGLRenderingContext.prototype);
+                        if(typeof WebGL2RenderingContext!=='undefined')_hgl(WebGL2RenderingContext.prototype);
+                        if(typeof AudioBuffer!=='undefined'){const _g=AudioBuffer.prototype.getChannelData;AudioBuffer.prototype.getChannelData=function(...a){const r=_g.apply(this,a);if(r&&r.length){const l=r.length,m=Math.min(l,100);for(let i=0;i<m;i++)r[_lcg()%l]+=(_lcg()%100)/10000000;}return r;};}
+                    })();
+                }
+
+                // --- Probe ---
                 ${sha256.toString()}
                 ${vectorHash.toString()}
                 ${collectVector.toString()}
                 ${emitPALS.toString()}
                 const RESEARCH_PROBE_VERSION = "${RESEARCH_PROBE_VERSION}";
+                const GLOBAL_CONFIG = self.__PAL_CONFIG || {};
                 (async () => {
                    const v = await collectVector('worker');
-                   self.postMessage({type: 'PAL_PROBE_RESULT', vector: v});
+                   emitPALS(v);
                 })();
                 `
             ], { type: 'application/javascript' });

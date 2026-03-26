@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         dashboard.classList.remove('hidden');
         shiftBtn.disabled = false;
 
-        elId.innerText = persona.id.substring(0, 16) + "...";
+        elId.innerText = persona.id ? (persona.id.substring(0, 16) + "...") : "Unknown";
         elName.innerText = persona.name;
         elOs.innerText = persona.navigator.platform;
         elBrowser.innerText = "Chrome (Spoofed)"; // Simplified for UI
@@ -30,15 +30,29 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initial Load
     try {
-        const response = await chrome.runtime.sendMessage({ type: 'GET_STATUS' });
-        if (response && response.persona) {
-            updateUI(response.persona);
-        } else {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+        // If no tab or internal page, show "No Active Site"
+        if (!tab || !tab.url || tab.url.startsWith('chrome://')) {
             updateUI(null);
+        } else {
+            // Check SW status
+            chrome.runtime.sendMessage({ type: 'GET_STATUS' }, (response) => {
+                if (chrome.runtime.lastError) {
+                    console.error("SW Error:", chrome.runtime.lastError);
+                    loading.innerHTML = "<h2>Error</h2><p>Service Worker Unreachable. Reload Extension.</p>";
+                    return;
+                }
+                if (response && response.persona) {
+                    updateUI(response.persona);
+                } else {
+                    updateUI(null);
+                }
+            });
         }
     } catch (e) {
         console.error("Popup Init Error:", e);
-        loading.innerHTML = "<h2>Error</h2><p>Service Worker Unreachable</p>";
+        loading.innerHTML = "<h2>Error</h2><p>Popup Init Failed</p>";
     }
 
     // Shift Action
@@ -47,15 +61,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         shiftBtn.disabled = true;
 
         try {
-            const response = await chrome.runtime.sendMessage({ type: 'PAL_SHIFT' });
-            if (response && response.status === 'rotated') {
-                updateUI(response.persona);
-                shiftBtn.innerText = "Identity Shifted!";
-                setTimeout(() => { shiftBtn.innerText = "Shift Identity"; shiftBtn.disabled = false; }, 2000);
-            } else {
-                shiftBtn.innerText = "Failed";
-                setTimeout(() => { shiftBtn.innerText = "Shift Identity"; shiftBtn.disabled = false; }, 2000);
-            }
+            chrome.runtime.sendMessage({ type: 'PAL_SHIFT' }, (response) => {
+                if (response && response.status === 'rotated') {
+                    updateUI(response.persona);
+                    shiftBtn.innerText = "Identity Shifted!";
+
+                    // Reload tab to apply
+                    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                        if (tabs[0]) chrome.tabs.reload(tabs[0].id);
+                    });
+
+                    setTimeout(() => { shiftBtn.innerText = "Shift Identity"; shiftBtn.disabled = false; }, 2000);
+                } else {
+                    shiftBtn.innerText = "Failed";
+                    setTimeout(() => { shiftBtn.innerText = "Shift Identity"; shiftBtn.disabled = false; }, 2000);
+                }
+            });
         } catch (e) {
             shiftBtn.innerText = "Error";
         }

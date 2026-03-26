@@ -1,104 +1,56 @@
 // src/background/service_worker.js
-// Manages state, storage, and cross-context coordination for PAL.
+// Handles base seed generation and message routing
 
-import { PersonaGenerator } from '../lib/persona.js';
-import { NetSpoofer } from './net.js';
-import { PolicyManager } from './policy.js';
+import './net.js';
+import './policy.js';
 
-console.log("[PAL] Background Service Worker Initialized (Policy Aware)");
-
-// -----------------------------------------------------
-// Message Handling (Bridge between Content / Popup)
-// -----------------------------------------------------
-
-// Logic is async, but listener must be synchronous to return 'true'
-async function handleMessageLogic(message, sender, sendResponse) {
-    try {
-        if (message.type === 'PAL_HELLO') {
-            // Tab asking for its persona.
-            // Identify origin from sender.tab.url
-            const url = sender.tab ? sender.tab.url : null;
-            const persona = await PolicyManager.getPersonaForUrl(url);
-
-            // Also update net rules for this active tab (Best Effort)
-            if (sender.tab && sender.tab.active) {
-                NetSpoofer.updateHeaders(persona).catch(e => { });
-            }
-
-            sendResponse(persona);
-        }
-
-        else if (message.type === 'PAL_SHIFT') {
-            // User clicked "Shift Identity" in Popup
-            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-            if (tab && tab.url) {
-                console.log("[PAL] Shifting identity for:", tab.url);
-                const newPersona = await PolicyManager.rotateForUrl(tab.url);
-
-                // Clear cache in that tab
-                await chrome.scripting.executeScript({
-                    target: { tabId: tab.id },
-                    func: () => { try { sessionStorage.removeItem('__PAL_CACHE__'); } catch (e) { } }
-                });
-
-                await NetSpoofer.updateHeaders(newPersona);
-
-                // Reload to apply
-                chrome.tabs.reload(tab.id);
-
-                sendResponse({ status: 'rotated', persona: newPersona });
-            } else {
-                // Fallback for empty/system pages
-                sendResponse({ status: 'error', message: 'No active site' });
-            }
-        }
-
-        else if (message.type === 'GET_STATUS') {
-            // Popup wants status. Return ACTIVE tab's persona.
-            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (tab && tab.url) {
-                const persona = await PolicyManager.getPersonaForUrl(tab.url);
-                sendResponse({ persona: persona });
-            } else {
-                sendResponse({ persona: null });
-            }
-        }
-    } catch (e) {
-        console.error("Message Handler Error:", e);
-        sendResponse(null);
+// Base Seed Logic
+chrome.runtime.onInstalled.addListener(async () => {
+    const data = await chrome.storage.local.get(["pal_enabled", "pal_persona_index", "pal_base_seed"]);
+    const updates = {};
+    if (data.pal_enabled === undefined) updates.pal_enabled = true;
+    if (data.pal_persona_index === undefined) updates.pal_persona_index = 0;
+    if (!data.pal_base_seed) {
+        // Generate stable base seed
+        updates.pal_base_seed = crypto.getRandomValues(new Uint32Array(1))[0];
     }
-}
-
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    handleMessageLogic(message, sender, sendResponse);
-    return true; // Keep channel open for async response
+    if (Object.keys(updates).length > 0) {
+        await chrome.storage.local.set(updates);
+    }
 });
 
+// Personas Definition (Simplified for Service Worker response)
+const PERSONAS = [
+    { id: "std-001", name: "Standard", navigator: { platform: "Win32" }, screen: { width: 1920, height: 1080 } },
+    { id: "high-002", name: "High", navigator: { platform: "MacIntel" }, screen: { width: 2560, height: 1440 } },
+    { id: "lin-003", name: "Linux", navigator: { platform: "Linux x86_64" }, screen: { width: 1366, height: 768 } },
+    { id: "mac-004", name: "Mac", navigator: { platform: "MacIntel" }, screen: { width: 1440, height: 900 } }
+];
 
-// -----------------------------------------------------
-// Initialization & Registration
-// -----------------------------------------------------
+// Message Listener
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.type === 'PAL_HELLO') {
+        sendResponse({ status: 'ok' });
+    }
 
-// 80. Initialization & Registration
-chrome.runtime.onInstalled.addListener(async () => {
-    // Force Fresh Registration (Fixes "Ignored Updates" bug)
-    try {
-        await chrome.scripting.unregisterContentScripts({ ids: ["pal_prehook"] });
-    } catch (e) { } // Ignore if not found
+    if (msg.type === 'GET_STATUS') {
+        // Async handling required, returning true
+        chrome.storage.local.get(["pal_persona_index"]).then(data => {
+            const pIdx = (data.pal_persona_index || 0) % PERSONAS.length;
+            sendResponse({ persona: PERSONAS[pIdx] });
+        });
+        return true;
+    }
 
-    // Register Main World Pre-Hook dynamically
-    chrome.scripting.registerContentScripts([{
-        id: "pal_prehook",
-        js: ["src/content/prehook.js"],
-        matches: ["<all_urls>"],
-        runAt: "document_start",
-        allFrames: true,
-        matchOriginAsFallback: true,
-        world: "MAIN"
-    }]).then(() => {
-        console.log("[PAL] Hook Registration Updated (allFrames: true)");
-    }).catch(e => {
-        console.error("Script registration failed:", e);
-    });
+    if (msg.type === 'PAL_SHIFT') {
+        chrome.storage.local.get(["pal_persona_index"]).then(data => {
+            const current = data.pal_persona_index || 0;
+            const next = (current + 1) % PERSONAS.length;
+
+            chrome.storage.local.set({ pal_persona_index: next }).then(() => {
+                sendResponse({ status: 'rotated', persona: PERSONAS[next] });
+            });
+        });
+        return true;
+    }
 });

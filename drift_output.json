@@ -1,0 +1,134 @@
+{
+  "vanilla": {
+    "top": {
+      "canvas": {
+        "stable": 44,
+        "drifted": 0
+      },
+      "webgl": {
+        "stable": 44,
+        "drifted": 0
+      },
+      "audio": {
+        "stable": 44,
+        "drifted": 0
+      }
+    },
+    "worker": {
+      "canvas": {
+        "stable": 40,
+        "drifted": 0
+      },
+      "webgl": {
+        "stable": 40,
+        "drifted": 0
+      },
+      "audio": {
+        "stable": 40,
+        "drifted": 0
+      }
+    },
+    "iframe": {
+      "canvas": {
+        "stable": 28,
+        "drifted": 0
+      },
+      "webgl": {
+        "stable": 28,
+        "drifted": 0
+      },
+      "audio": {
+        "stable": 28,
+        "drifted": 0
+      }
+    }
+  },
+  "compat": {
+    "top": {
+      "canvas": {
+        "stable": 44,
+        "drifted": 0
+      },
+      "webgl": {
+        "stable": 44,
+        "drifted": 0
+      },
+      "audio": {
+        "stable": 44,
+        "drifted": 0
+      }
+    },
+    "worker": {
+      "canvas": {
+        "stable": 40,
+        "drifted": 0
+      },
+      "webgl": {
+        "stable": 40,
+        "drifted": 0
+      },
+      "audio": {
+        "stable": 40,
+        "drifted": 0
+      }
+    },
+    "iframe": {
+      "canvas": {
+        "stable": 27,
+        "drifted": 0
+      },
+      "webgl": {
+        "stable": 27,
+        "drifted": 0
+      },
+      "audio": {
+        "stable": 27,
+        "drifted": 0
+      }
+    }
+  },
+  "privacy": {
+    "top": {
+      "canvas": {
+        "stable": 0,
+        "drifted": 44
+      },
+      "webgl": {
+        "stable": 0,
+        "drifted": 44
+      },
+      "audio": {
+        "stable": 0,
+        "drifted": 44
+      }
+    },
+    "worker": {
+      "canvas": {
+        "stable": 0,
+        "drifted": 40
+      },
+      "webgl": {
+        "stable": 0,
+        "drifted": 40
+      },
+      "audio": {
+        "stable": 40,
+        "drifted": 0
+      }
+    },
+    "iframe": {
+      "canvas": {
+        "stable": 4,
+        "drifted": 23
+      },
+      "webgl": {
+        "stable": 4,
+        "drifted": 23
+      },
+      "audio": {
+        "stable": 4,
+        "drifted": 23
+      }
+    }
+  }
+}

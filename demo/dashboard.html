@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>PAL Verification Dashboard</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #f4f4f9;
+            color: #333;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 10px;
+        }
+
+        .controls {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        select,
+        input,
+        button {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        button {
+            cursor: pointer;
+            background: #3498db;
+            color: white;
+            border: none;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background: #2980b9;
+        }
+
+        button.secondary {
+            background: #95a5a6;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        th,
+        td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+            font-family: 'Consolas', monospace;
+            font-size: 13px;
+        }
+
+        th {
+            background: #34495e;
+            color: #fff;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 12px;
+        }
+
+        tr:hover {
+            background: #f1f1f1;
+        }
+
+        .hash-change {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+
+        /* Highlight changes */
+        .hash-stable {
+            color: #27ae60;
+        }
+
+        .status-box {
+            margin-bottom: 10px;
+            font-style: italic;
+            color: #555;
+        }
+    </style>
+    <script src="probe_browser.js"></script>
+</head>
+
+<body>
+
+    <h1>PAL Verification Dashboard</h1>
+
+    <div class="controls">
+        <div class="control-group">
+            <label>Mode:</label>
+            <select id="ui-mode">
+                <option value="vanilla">Vanilla (Control)</option>
+                <option value="compat">Compat (Protection)</option>
+                <option value="privacy">Privacy (Unlinkable)</option>
+            </select>
+
+            <label style="margin-left: 20px;">Epoch:</label>
+            <input type="number" id="ui-epoch" value="1" min="1" max="99">
+
+            <button onclick="runProbeCommand()" style="margin-left: 20px;">Run Probe & Reload</button>
+            <button class="secondary" onclick="clearHistory()" style="margin-left: 10px;">Clear History</button>
+        </div>
+        <div class="status-box" id="status-msg">Ready. Select parameters and click Run.</div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th width="100">Time</th>
+                <th width="80">Mode</th>
+                <th width="50">Epoch</th>
+                <th>Canvas Hash</th>
+                <th>WebGL Hash</th>
+                <th>Audio Hash</th>
+                <th>Navigator Hash</th>
+            </tr>
+        </thead>
+        <tbody id="history-body">
+            <!-- Rows injected here -->
+        </tbody>
+    </table>
+
+    <script>
+        // --- Persistence Logic ---
+        function renderHistory() {
+            const history = JSON.parse(localStorage.getItem('pal_demo_history') || '[]');
+            const tbody = document.getElementById('history-body');
+            tbody.innerHTML = '';
+
+            // Render latest first
+            [...history].reverse().forEach((row, idx, arr) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${new Date(row.ts).toLocaleTimeString()}</td>
+                    <td>${row.mode}</td>
+                    <td>${row.epoch}</td>
+                    <td class="hash-cell">${row.canvas}</td>
+                    <td class="hash-cell">${row.webgl}</td>
+                    <td class="hash-cell">${row.audio}</td>
+                    <td class="hash-cell">${row.nav}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function clearHistory() {
+            localStorage.removeItem('pal_demo_history');
+            renderHistory();
+        }
+
+        function runProbeCommand() {
+            const mode = document.getElementById('ui-mode').value;
+            const epoch = document.getElementById('ui-epoch').value;
+
+            // Signal Puppeteer to reload with new config
+            console.log(`__PAL_CMD__:SET_CONFIG:${mode}:${epoch}`);
+            document.getElementById('status-msg').innerText = "Reloading...";
+
+            // Manual Fallback: If no external driver reloads us within 500ms, we reload ourselves.
+            setTimeout(() => {
+                window.location.reload();
+            }, 500);
+        }
+
+        // --- Auto-Run Logic on Load ---
+
+        async function onPageLoad() {
+            renderHistory();
+
+            // Default Vanilla
+            let config = (window.__PAL_CONFIG || { mode: 'vanilla (default)', epoch_id: 'N/A' });
+
+            // PAL Active Detection (Manual Mode Fix)
+            const palAttr = document.documentElement.getAttribute('data-pal-config');
+            if (palAttr) {
+                try {
+                    const palCfg = JSON.parse(palAttr);
+                    if (palCfg.enabled) {
+                        const pIdx = palCfg.personaIndex !== undefined ? palCfg.personaIndex : '?';
+                        config.mode = `PAL Active (Persona ${pIdx})`;
+
+                        // Use session seed modulo as pseudo-epoch so user sees it changing
+                        if (config.epoch_id === 'N/A' && palCfg.sessionSeed) {
+                            config.epoch_id = (palCfg.sessionSeed % 100).toString().padStart(2, '0');
+                        }
+                    } else {
+                        config.mode = "PAL Disabled";
+                    }
+                } catch (e) {
+                    console.error("PAL Detected but config parse failed", e);
+                }
+            } else {
+                console.log("No PAL config detected. Ensure 'Allow access to file URLs' is ON in chrome://extensions.");
+            }
+
+            // Sync UI to Config (Visual only)
+            if (window.__PAL_CONFIG) {
+                document.getElementById('ui-mode').value = config.mode;
+                document.getElementById('ui-epoch').value = config.epoch_id;
+            }
+
+            // Run Probe
+            document.getElementById('status-msg').innerText = `Probing environment (${config.mode})...`;
+
+            const vector = await PAL_DEMO_PROBE.collectVector('top');
+
+            // Save to history
+            const history = JSON.parse(localStorage.getItem('pal_demo_history') || '[]');
+
+            history.push({
+                ts: new Date().toISOString(),
+                mode: config.mode,
+                epoch: config.epoch_id,
+                canvas: vector.components.canvas_imagedata_hash,
+                webgl: vector.components.webgl_hash,
+                audio: vector.components.audio_hash,
+                nav: vector.components.nav_hash
+            });
+
+            localStorage.setItem('pal_demo_history', JSON.stringify(history));
+            renderHistory();
+            document.getElementById('status-msg').innerText = "Probe Complete. Ready.";
+        }
+
+        window.addEventListener('load', () => {
+            setTimeout(onPageLoad, 500);
+        });
+
+    </script>
+</body>
+
+</html>
