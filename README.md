@@ -1,75 +1,101 @@
-# PAL: Privacy & Linkability Framework
+# PAL V2: Privacy & Linkability Research Framework
 
-**PAL** is a research-grade browser extension and crawler framework designed to evaluate privacy drift and linkability in modern web environments. It implements a novel "Epoch-Coupled Noise" strategy to achieve unlinkability while maintaining compatibility.
+**PAL (Psychological Anonymity Linkability)** is a research-grade browser extension and automated crawler system designed to evaluate, harden, and verify anti-fingerprinting defenses in modern web environments. Unlike standard privacy tools, PAL is built on a rigorous **Gate-Based Research Pipeline**, ensuring that defenses are not just "random" but mathematically consistent and verifiable against ad-tech linking.
 
-## 🚀 Features
-- **Epoch-Coupled Noise**: Deterministic noise injection seeded by `(Identity + Epoch + Content)`, ensuring consistency within a session but drift across sessions.
-- **Multi-Mode Operation**:
-  - `vanilla`: Baseline browser behavior (High Linkability).
-  - `compat`: Stability mode (Noise OFF, specific overrides).
-  - `privacy`: Unlinkability mode (Noise ON, Epoch-Drifting).
-- **Context Coverage**: Supports Top-level frames, Cross-origin Iframes, and Web Workers.
-- **Vectors**: Canvas (2D), WebGL, AudioContext, Navigator, Screen.
+---
 
-## 🛠️ Installation
+## 1. What is this tool about?
+PAL solves the "Consistency vs. Privacy" trade-off. Most anti-fingerprinting tools either:
+- **Break websites** by returning inconsistent or "fake" data that triggers fraud detection.
+- **Fail to protect** because their noise is too predictable or doesn't cover all contexts (i.e., Web Workers, Iframes).
 
-```bash
-# Clone the repository
-git clone https://github.com/stuhamz/PAL.git
-cd PAL
+**PAL's Solution: Epoch-Coupled Noise**
+PAL injects deterministic noise seeded by a combination of `(Identity + Epoch + Content)`.
+- **Inside an Epoch (Session):** The fingerprint is perfectly stable. Websites don't break because the data remains consistent.
+- **Across Epochs:** The fingerprint "drifts" (changes). To a tracker, you look like a completely new person every time the epoch changes, breaking long-term linkability.
 
-# Install dependencies
-npm install
+---
+
+## 2. Important Project Directory
+Only the core components necessary for research and deployment:
+
+```text
+PAL/
+├── src/                  # The Extension Source
+│   ├── content/          # Core payload injection (prehook.js)
+│   └── background/       # Persona & Seed management
+├── research/             # The Research Suite
+│   ├── crawler_research.js # The Gate-Runner (Automated testing)
+│   ├── research_probe.js   # Deterministic FP measurement script
+│   └── worker_noise.js     # Standalone injector for Web Workers
+├── tools/                # Analysis & Verification
+│   └── research_gate_evaluator.js # Automated PASS/FAIL validator
+└── data/                 # Telemetry Storage
+    ├── runs/               # JSONL results from crawls
+    └── gold_reference/      # The baseline "Ground Truth" for regression
 ```
 
-## 🏃‍♂️ Usage
+---
 
-### Running a Research Crawl
-The crawler runs a structured experiment across defined sites, modes, and epochs.
+## 3. How to use the tools
+### For Developers: Extension Setup
+1. Open Chrome -> `chrome://extensions`
+2. Enable **Developer Mode**.
+3. Click **Load Unpacked** and select the `PAL/` root folder.
+4. Use the popup to switch the tool on. 
 
+### For Researchers: Running an Automated Crawl
+The crawler uses Playwright to visit sites and collect telemetry automatically.
 ```bash
-# Run the crawler (Defaults to Mini-Run: 3 Sites)
+# Install dependencies
+npm install
+
+# Run a research crawl
+# (Set TARGET_COUNT in crawler_research.js to 50 for a full run)
 node research/crawler_research.js
 ```
 
-**Configuration:**
-- Edit `research/crawler_research.js` to change `TARGET_COUNT` (e.g., set to `100` for a full run).
-- Sites list is in `research/sites_structured.json`.
+---
 
-### Output
-Results are saved to `data/runs/<RUN_ID>/run_<RUN_ID>.jsonl`.
-Logs are printed to stdout.
+## 4. Large-Scale Testing (Gate 4)
+We verify PAL using a **5-Gate Pipeline**. The latest **Gate 4 (Full Pilot)** tested PAL across 50 diverse sites (Fingerprinting labs, Ad-tech, E-commerce, Social Media).
 
-## 📊 Data & Analysis
+### **Gate 4 Summary Results (Run: `9cfad97a...`)**
+| Context | Sites Tracked | Privacy Drift | Compat Stability | Result |
+| :--- | :--- | :--- | :--- | :--- |
+| **Top-Level** | 44/44 | **100%** | **100%** | ✅ PASS |
+| **Web Workers** | 40/40 | **100%** | **100%** | ✅ PASS |
+| **Iframes** | 23/29 | **85%** | **100%** | ✅ PASS |
 
-### Schema V2
-The project enforces **Schema V2** for all telemetry events.
+**Key Performance Metrics:**
+- **Error Rate:** 13.8% (Target: < 40%)
+- **Avg Probe Time:** 43.1ms (Ultra-low overhead)
+- **Zero Drift in Compat Mode:** Guaranteed zero breakage for legacy/sensitive sites.
 
-| Field | Description |
-| :--- | :--- |
-| `event_type` | `fingerprint_vector` |
-| `site_url` | Target Domain |
-| `mode` | `vanilla`, `compat`, `privacy` |
-| `epoch` | Integer (1, 2, 3...) |
-| `context` | `top`, `iframe`, `worker` |
-| `components` | Object containing hashes (`canvas_imagedata_hash`, `webgl_hash`, etc.) |
+---
 
-### Sample Data
-A small sample of the output format is provided in `data/sample_run.jsonl`.
-**Note:** The full 100-site dataset is available upon request (or check the releases page).
+## 5. How to Verify Claims & Results
+To verify that PAL is actually protecting you and not just breaking things, run the automated evaluator:
 
-### Reproducing a Mini Run
-1. Ensure `TARGET_COUNT = 3` in `research/crawler_research.js`.
-2. Run `node research/crawler_research.js`.
-3. Check `data/runs/` for the new folder.
-4. Run analysis script (provided in `research/data_analysis.js`) against the new file.
+1. **Perform a run:** `node research/crawler_research.js`
+2. **Evaluate the run:**
+   ```bash
+   # Replace <RUN_ID> with the folder name in data/runs/
+   node tools/research_gate_evaluator.js <RUN_ID>
+   ```
+3. **What to look for:**
+   - **Vanilla/Compat Drift:** MUST be **0%**. Any drift here is a "Regression" (the tool is unstable).
+   - **Privacy Drift:** MUST be **> 80%**. Any stability here is a "Leak" (trackers can see through the noise).
 
-```bash
-# Analyze a specific run
-node research/data_analysis.js data/runs/<YOUR_RUN_ID>/run_<YOUR_RUN_ID>.jsonl
-```
+---
 
-## ⚠️ Status
-This project is Research Code.
-- **Debug flags** are OFF by default.
-- **Strict Mode** is enforced for Schema V2.
+## 6. Why do we need this?
+In the current web landscape, your browser fingerprint is a permanent, silent ID.
+- **Anti-Tracking isn't enough:** Blocking cookies is trivial; fingerprinting is probabilistic and happens at the hardware level (Canvas, WebGL, Audio).
+- **The "Linkability" Problem:** Even if you use a VPN or delete cookies, your "Canvas Hash" stays the same. The ad-tech graph can "re-link" your new IP/Session back to your old profile.
+- **The Hybrid Solution:** People need a tool that **drifts** their identity consistently so that no single "shadow profile" can follow them for more than a few days, without the tool being detected as "faking data" or "hiding activity."
+
+**PAL is designed for researchers, whistleblowers, and privacy-conscious users who require verifiable, state-of-the-art protection.**
+
+---
+*Created by stuhamz | PAL V2 Project*
