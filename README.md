@@ -32,7 +32,6 @@ PAL/
 │   └── research_gate_evaluator.js # Automated PASS/FAIL validator
 └── data/                 # Telemetry Storage
     ├── runs/               # JSONL results from crawls
-    └── gold_reference/      # The baseline "Ground Truth" for regression
 ```
 
 ---
