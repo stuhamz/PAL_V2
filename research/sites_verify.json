@@ -1,7 +1,0 @@
-[
-    {
-        "url": "https://browserleaks.com/webrtc",
-        "category": "Probe: WebRTC",
-        "reason": "Verify Frame Aggregation Fix"
-    }
-]

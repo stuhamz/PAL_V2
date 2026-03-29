@@ -3,9 +3,7 @@ const path = require('path');
 const readline = require('readline');
 
 // The Sacred Gold Reference
-const GOLD_RUN_ID = '1dfd869d-5fcf-4fcf-a6c4-2d97f9df8154';
 const RUNS_DIR = path.join(__dirname, '..', 'data', 'runs');
-const GOLD_RUN_FILE = path.join(RUNS_DIR, GOLD_RUN_ID, `run_${GOLD_RUN_ID}.jsonl`);
 
 // Helper to stream JSONL
 async function streamJsonl(filePath, processLine) {
@@ -84,17 +82,20 @@ function analyzeDrift(metrics) {
                 
                 if (epochKeys.length < 2) continue; 
 
-                const e1Comp = epochs[epochKeys[0]][0]; 
-                const e2Comp = epochs[epochKeys[1]][0];
+                const firstKey = epochKeys[0];
+                const lastKey = epochKeys[epochKeys.length - 1];
 
-                if (e1Comp && e2Comp) {
-                    if (e1Comp.canvas_imagedata_hash === e2Comp.canvas_imagedata_hash) driftReport[mode][context].canvas.stable++;
+                const e1Comp = epochs[firstKey][0]; 
+                const eNComp = epochs[lastKey][0];
+
+                if (e1Comp && eNComp) {
+                    if (e1Comp.canvas_imagedata_hash === eNComp.canvas_imagedata_hash) driftReport[mode][context].canvas.stable++;
                     else driftReport[mode][context].canvas.drifted++;
 
-                    if (e1Comp.webgl_hash === e2Comp.webgl_hash) driftReport[mode][context].webgl.stable++;
+                    if (e1Comp.webgl_hash === eNComp.webgl_hash) driftReport[mode][context].webgl.stable++;
                     else driftReport[mode][context].webgl.drifted++;
 
-                    if (e1Comp.audio_hash === e2Comp.audio_hash) driftReport[mode][context].audio.stable++;
+                    if (e1Comp.audio_hash === eNComp.audio_hash) driftReport[mode][context].audio.stable++;
                     else driftReport[mode][context].audio.drifted++;
                 }
             }
@@ -106,30 +107,94 @@ function analyzeDrift(metrics) {
 // Evaluate pass/fail against strict rules
 function evaluateTargetProfile(metrics, drift) {
     const reasons = [];
-    
-    // 1. Breakage Check
+
     const errorRate = metrics.errors / (metrics.total_events || 1);
-    if (errorRate > 0.4) reasons.push(`Failure: Massive error flood (${(errorRate*100).toFixed(1)}%)`);
+    if (errorRate > 0.4) {
+        reasons.push(`Failure: Massive error flood (${(errorRate * 100).toFixed(1)}%)`);
+    }
 
-    // 2. Timing Check
-    if (metrics.avg_timing > 500) reasons.push(`Failure: Runaway timings (Avg: ${metrics.avg_timing.toFixed(1)}ms)`);
+    if (metrics.avg_timing > 500) {
+        reasons.push(`Failure: Runaway timings (Avg: ${metrics.avg_timing.toFixed(1)}ms)`);
+    }
 
-    // 3. Drift Logic
-    const modes = ['vanilla', 'compat', 'privacy'];
-    for (const mode of modes) {
-        if (!drift[mode]) continue;
-        
-        if (mode === 'vanilla' || mode === 'compat') {
-            if (drift[mode].top.canvas.drifted > 0) reasons.push(`Failure: Top canvas drifted in ${mode} mode`);
-            if (drift[mode].top.webgl.drifted > 0) reasons.push(`Failure: Top webgl drifted in ${mode} mode`);
-        } else if (mode === 'privacy') {
-            if (drift[mode].top.canvas.stable > 0) reasons.push(`Failure: Top canvas stayed stable in privacy mode (${drift[mode].top.canvas.stable} sites)`);
+    function checkStable(mode, context, signal, requiredRate = 1.0) {
+        const bucket = drift?.[mode]?.[context]?.[signal];
+        if (!bucket) {
+            reasons.push(`Failure: Missing ${mode}/${context}/${signal} bucket`);
+            return;
+        }
+        const total = bucket.stable + bucket.drifted;
+        if (total === 0) {
+            reasons.push(`Failure: No observations for ${mode}/${context}/${signal}`);
+            return;
+        }
+        const stableRate = bucket.stable / total;
+        if (stableRate < requiredRate) {
+            reasons.push(
+                `Failure: ${mode}/${context}/${signal} stable rate ${(stableRate * 100).toFixed(1)}% < ${(requiredRate * 100).toFixed(1)}%`
+            );
         }
     }
 
-    // 4. Coverage Check
-    if ((metrics.contexts.privacy?.top || 0) === 0 && (metrics.contexts.vanilla?.top || 0) === 0) {
-        reasons.push(`Failure: No top context telemetry detected.`);
+    function checkDrift(mode, context, signal, requiredRate = 1.0) {
+        const bucket = drift?.[mode]?.[context]?.[signal];
+        if (!bucket) {
+            reasons.push(`Failure: Missing ${mode}/${context}/${signal} bucket`);
+            return;
+        }
+        const total = bucket.stable + bucket.drifted;
+        if (total === 0) {
+            reasons.push(`Failure: No observations for ${mode}/${context}/${signal}`);
+            return;
+        }
+        const driftRate = bucket.drifted / total;
+        if (driftRate < requiredRate) {
+            reasons.push(
+                `Failure: ${mode}/${context}/${signal} drift rate ${(driftRate * 100).toFixed(1)}% < ${(requiredRate * 100).toFixed(1)}%`
+            );
+        }
+    }
+
+    function requireCoverage(mode, context, minCount = 1) {
+        const count = metrics.contexts?.[mode]?.[context] || 0;
+        if (count < minCount) {
+            reasons.push(`Failure: ${mode}/${context} coverage too low (${count})`);
+        }
+    }
+
+    const strictSignals = ['canvas', 'webgl'];
+    const fullContexts = ['top', 'worker'];
+
+    for (const mode of ['vanilla', 'compat']) {
+        for (const context of fullContexts) {
+            requireCoverage(mode, context, 1);
+            for (const signal of strictSignals) {
+                checkStable(mode, context, signal, 1.0);
+            }
+        }
+    }
+
+    for (const context of fullContexts) {
+        requireCoverage('privacy', context, 1);
+        for (const signal of strictSignals) {
+            checkDrift('privacy', context, signal, 1.0);
+        }
+    }
+
+    const iframeSignals = ['canvas', 'webgl'];
+
+    for (const mode of ['vanilla', 'compat']) {
+        if ((metrics.contexts?.[mode]?.iframe || 0) > 0) {
+            for (const signal of iframeSignals) {
+                checkStable(mode, 'iframe', signal, 0.80);
+            }
+        }
+    }
+
+    if ((metrics.contexts?.privacy?.iframe || 0) > 0) {
+        for (const signal of iframeSignals) {
+            checkDrift('privacy', 'iframe', signal, 0.80);
+        }
     }
 
     return {
@@ -138,14 +203,23 @@ function evaluateTargetProfile(metrics, drift) {
     };
 }
 
-async function runEvaluation(targetRunId) {
+async function runEvaluation(targetRunId, goldRunId = null) {
     console.log(`\n==============================================`);
     console.log(`🛡️ PAL RESEARCH GATE EVALUATOR`);
     console.log(`==============================================\n`);
 
-    if (!fs.existsSync(GOLD_RUN_FILE)) {
-        console.error(`❌ CRITICAL: Gold Reference Run not found at ${GOLD_RUN_FILE}`);
-        process.exit(1);
+    let goldMetrics = null;
+    let goldDrift = null;
+
+    if (goldRunId) {
+        const goldFile = path.join(RUNS_DIR, goldRunId, `run_${goldRunId}.jsonl`);
+        if (fs.existsSync(goldFile)) {
+            console.log(`Analyzing GOLD Reference Run (${goldRunId})...`);
+            goldMetrics = await computeRunMetrics(goldFile);
+            goldDrift = analyzeDrift(goldMetrics);
+        } else {
+            console.log(`Gold run not found for ${goldRunId}. Continuing without baseline.`);
+        }
     }
 
     const targetFile = path.join(RUNS_DIR, targetRunId, `run_${targetRunId}.jsonl`);
@@ -154,10 +228,6 @@ async function runEvaluation(targetRunId) {
         process.exit(1);
     }
 
-    console.log(`Analyzing GOLD Reference Run (1dfd869d)...`);
-    const goldMetrics = await computeRunMetrics(GOLD_RUN_FILE);
-    const goldDrift = analyzeDrift(goldMetrics);
-    
     console.log(`Analyzing TARGET Run (${targetRunId})...`);
     const targetMetrics = await computeRunMetrics(targetFile);
     const targetDrift = analyzeDrift(targetMetrics);
@@ -224,12 +294,25 @@ async function runEvaluation(targetRunId) {
     }
 
     console.log(`\n── BREAKAGE & TIMING ──────────────────────────────────`);
+if (goldMetrics) {
     console.log(`  Total Events:   ${totalEvents}  (Gold baseline: ${goldMetrics.total_events})`);
-    console.log(`  Errors:         ${errors}  (${errorPct}%)`);
+} else {
+    console.log(`  Total Events:   ${totalEvents}`);
+}
+
+console.log(`  Errors:         ${errors}  (${errorPct}%)`);
+
+if (goldMetrics) {
     console.log(`  Avg Probe Time: ${avgTiming}ms  (Gold: ${goldMetrics.avg_timing.toFixed(1)}ms)`);
     const timingDelta = (targetMetrics.avg_timing - goldMetrics.avg_timing).toFixed(1);
-    const timingFlag = Math.abs(parseFloat(timingDelta)) < 100 ? '✅ Within acceptable range' : '⚠️  Timing spike vs Gold';
+    const timingFlag = Math.abs(parseFloat(timingDelta)) < 100
+        ? '✅ Within acceptable range'
+        : '⚠️ Timing spike vs Gold';
     console.log(`  Timing Delta:   ${parseFloat(timingDelta) > 0 ? '+' : ''}${timingDelta}ms  ${timingFlag}`);
+} else {
+    console.log(`  Avg Probe Time: ${avgTiming}ms`);
+    console.log(`  Timing Delta:   Not computed`);
+}
 
     console.log(`\n── VERDICT ────────────────────────────────────────────`);
     if (evaluation.passed) {
@@ -243,10 +326,12 @@ async function runEvaluation(targetRunId) {
 
 async function main() {
     const target = process.argv[2];
+    const gold = process.argv[3] || null;
+
     if (!target) {
-        console.log('Usage: node research_gate_evaluator.js <run_id>');
+        console.log('Usage: node research_gate_evaluator.js <run_id> [gold_run_id]');
     } else {
-        await runEvaluation(target);
+        await runEvaluation(target, gold);
     }
 }
 

@@ -4,7 +4,6 @@ const fs = require('fs');
 const crypto = require('crypto');
 
 // --- Paths ---
-const SITES_FILE = path.join(__dirname, 'sites_structured.json');
 const EXTENSION_PATH = path.resolve(__dirname, '../');
 const RESEARCH_PROBE_PATH = path.join(__dirname, 'research_probe.js');
 const WORKER_NOISE_PATH = path.join(__dirname, 'worker_noise.js');
@@ -96,6 +95,9 @@ function appendJSONL(data) {
     ];
     const PROBE_SRC = fs.readFileSync(RESEARCH_PROBE_PATH, 'utf8');
     const WORKER_NOISE_SRC = fs.readFileSync(WORKER_NOISE_PATH, 'utf8');
+
+    // Slice for Gate 4 / Mini-run control
+    urls = urls.slice(0, TARGET_COUNT);
 
     for (const mode of MODES) {
         console.log(`\n=== MODE: ${mode.toUpperCase()} ===`);
@@ -280,7 +282,7 @@ function appendJSONL(data) {
         }
     }
 
-    console.log(`\n✅ Gate 1 Crawl Complete! Run ID: ${RUN_ID}`);
+    console.log(`\n✅ Gate 4 Crawl Complete! Run ID: ${RUN_ID}`);
     console.log(`To evaluate: node ../tools/research_gate_evaluator.js ${RUN_ID}`);
     stream.end();
 })();
